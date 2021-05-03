@@ -1,0 +1,997 @@
+---
+title: 'Statistics project to use R evaluation tools'
+date: 'December 14'
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    toc: yes
+subtitle: Predictors in Tippng Amount
+authors: 'Fall 2016:  Jerry Finn , Greg ..., Rich ....'
+---
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80)
+```
+
+Back to [Home Page](https://jerryfinn.github.io/)
+
+## Introduction
+
+This is a project I worked on with 2 other students, so I'm not claiming that all the code is mine, although I certainly constributed my share. I've removed my colleages full names, since I didn't ask for their permission to share this.  
+  
+The goal of this assignment was just to demonstrate proficiency in R's regression analysis tools, such as whether the data conforms to our assumptions, and the ability to experiment with any combination of features. Therefore, we weren't looking to find anything uninituitive, since the focus was to be on the use of the tools. 
+
+### Team Members
+Jerry Finn   
+Greg ...  
+Rich ...  
+
+### Personal Interest
+
+We've all worked in the service sector in our youth or have kids that have, so we wanted to know what really determines service-based compensation. The nature of the data set also allows us to explore some interesting statistical regression, such as multiple variables: continuous, discrete, and factor variables and their interaction. 
+
+### How We Found The Data Set
+From the RStudio Console, we invoked "**??datasets**" to see all 90+ datasets available in R.  The `tips` data set was the one we found most interesting for the reasons given above.   
+  
+* **reshape2::tips**		Tipping data
+ 
+### Data Set and Package Overview
+
+We have choosen a straight forward dataset of a waiter that recorded his tips over the period of several months to look at what predictors determine the overall tip amount. The data comes with the `reshape2` `R` package that is used to manipulate and clean data, although that is not our primary goal here. As stated previously, it was collected by a waiter tracking his own job performance. 
+
+### [Detailed Description of Data and Cited Reference](tips.html)
+  
+As we can note when clicking on the link above, there are a number of interesting variables to explore here, such as the numeric variables of total bill amount and size of party. We also have a fair number of factor variables that we can explore in terms of additive or interaction properties, such as Smoker or Non-Smoker, Male or Female, Meal Type (Dinner or Lunch) and and Day of the Week.   Intuitively, we suspect that `total_bill` is the most signifcant variable. We would also suspect that `size` of the party seems highly correlated to `total_bill`.  
+
+
+### Quick Look at the Observation Data
+```{r,eval=TRUE,echo=FALSE}
+library(reshape2)
+tips <- tips
+str(tips)
+```
+We were instructed to use any dataset of our choice, as long as it contained a minimum 200 observations (ours has 244), a numeric response variable (`tip`), at least one categorical predictor (`sex`, `smoker`, `day`, `time`), and at least two numeric predictors (`total_bill` and `size`).  
+  
+  
+### Goal of This Analysis and Proposed Model
+We are creating a model for this tipping data to determine whether `total_bill` is the only predictor relevant for determining the response, `tip`. Our assumption, from life experience, is that it is. The alternative theory is to assume there are other predictors that are significant to determining `tip`, other than `total_bill`.
+
+We want to answer the following questions about our data and proposed model:
+
+- What are the key predictors to receiving the highest tip? Does it matter if the person paying the bill is a smoker or not?  Does gender matter?  Do people tip better over a meal at dinner time rather than lunch? Are there days in the week that result in the highest tips?   We have preconceived ideas on the answers to these questions but want to use the statistical methods learned in class to make informed decsions.  
+- Per the questions given above, we will take a closer look at the factor variables in the data set. For example, we will find out if the mean `tip` of a group of smokers differs than the mean `tip` of female bill payers?  We will use box plots, interaction plots, and perform TukeyHSD tests to confirm whether there is any interaction between factors.  
+  
+- The primary goal of our analysis is to recommend a model that is best for Prediction, and then a model best for Explanation.  We will comment on whether these proposed models violate assumptions of linearity.  
+
+- Finally, we will use our proposed model to predict tip amounts for 3 types of bills:  1) a very small bill amount (near zero), 2) for a bill near the mean, and 3) for a bill at the very high end of our observed values.  
+  
+  
+### General Approach
+    
+* Team collaboration via Zoom video conferencing and email.  
+* Use GitHub as our web-based Git repository hosting service for all source code.  
+* Use Git as our distributed version control and source code management (SCM) tool.  
+  
+We utilized the following data analysis and statistical methods, learned in STAT 420, to complete our analysis:
+
+- Read about the source of our data, its attributes, and the original study.
+- Inspect our data (244 observations)
+- Fix any N/A or missing fields and look for factors that need to be coerced.
+- Look for response or predictor variables that may be always positive and orders of magintude greater than the other varibles (indicating possible log transformation required).
+- Report on description statistics: e.g., mean and variance of response variable.
+- Before trying to fit a good model, perform significance of regression to confirm that one or more predictors has a linear relationship with the response variable.
+- Use a fitted versus residual plot and a Q-Q plot to visually check for violations of linearity.
+- Perform Shapiro-Wilk test to validate normality.
+- Perform Breusch-Pagan Test to validate constant variance.
+- Confirm if transformation of response variables or predictors is necessary (log or polynomial).
+- Determine if simple linear or multi-linear regression. 
+- For an MLR model, determine if an additive model only, or will there also be interaction terms, polynomial terms.
+- Comment on dummy variables, factor variables, binary variables. Test for interaction.
+- Perform 2-way ANOVA to test the main effects of more than one factor variable.
+- Use interaction plots to show possible interaction between factors.
+- Use TukeyHSD (Honest Significance Difference) function to determine significance of interaction between factors.
+- Test data observations for outliers, high influence (Cook's Distance), and high leverage.
+- Calc VIFs and partial correlation to check for collinearity of predictors.
+- Use ANOVA (Analysis of Variance) and inference to compare models. Test for significance.
+- Find a good model using step() function using forward, backward, and both to calculate lowest AIC and BIC
+- Determine an exhaustive model using regsubsets() function in library(leaps).
+- For all models built, calculate Adjusted R^2 (larger is better), RMSE (smaller is better), LOOCV_RMSE (smaller is better), AIC (smaller is better), and BIC (smaller is better) when comparing different models.
+- Summarize all model results into a table for easy comparison.
+- Randomly split observation data into Train data (66%) and Test data (34%) to validate the chosen model. Select model with lowest Test RMSE to ensure fewest predictors (avoid overfitting).
+- If applicable, comment on causation vs. correlation.
+- Recommend best model for prediction vs. best model for explanation.
+
+## Methods
+
+```{r echo=FALSE}
+# Duplicate of code displayed in Appendix
+# Helper functions
+
+# Function to add new model to list of best models
+append_model_list = function(mod_new) {
+  for(i in 1:length(mod_list)) {
+    if (identical(names(coef(mod_list[[i]])), names(coef(mod_new)))) {break}
+    if (i == length(mod_list)) {
+      .GlobalEnv$mod_list[[length(.GlobalEnv$mod_list)+1]] <- mod_new
+    }
+  }
+}
+
+# Function to add new model to list of best train and best test models
+set.seed(42)
+append_model_list_test_train = function(mod_new) {
+  for(i in 1:length(mod_list_test_train)) {
+    if (identical(coef(mod_list_test_train[[i]]), coef(mod_new))) {break}
+    if (i == length(mod_list_test_train)) {
+      .GlobalEnv$mod_list_test_train[[length(.GlobalEnv$mod_list_test_train)+1]] <- mod_new
+    }
+  }
+}
+
+# Function to run Leave-One-Out Cross-Validation RMSE from text
+calc_loocv_rmse = function(model) {
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+
+
+```
+
+
+```{r, solution = TRUE, echo=FALSE}
+# Duplicate of code displayed in Appendix
+# Helper functions from text
+plot_fitted_resid = function(model, model_name, pointcol = "dodgerblue", linecol = "darkorange") {
+  plot(fitted(model), resid(model), 
+       col = pointcol, pch = 20, cex = 1.5,
+       main=model_name, xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
+}
+
+plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+  qqline(resid(model), col = linecol, lwd = 2)
+}
+
+var_lin_plots <- function(model, model_name){
+  par(mfrow = c(1, 2))
+  plot_fitted_resid(model, model_name)
+  plot_qq(model)
+}
+
+```
+  
+Here we'll take a look quick look at our data. 
+
+```{r echo=FALSE}
+# for tidy function
+library(broom)
+```
+```{r,eval=TRUE}
+summary(tips)
+```
+
+A tip is usually calculated as a percentage of a the total bill. Therefore, we could hypothesize that a simple linear model with one predictor variable, `total_bill`, would be the best model. Let's take look at a summary of the model and at a graph. 
+
+```{r, fig.width=9}
+# Here we build a simple linear model with an obvious variable
+tips_slr = lm(tip ~ total_bill, data = tips)
+summary(tips_slr)
+# The plot shows that the data gets sparcer as the bill grows.  
+par(mfrow = c(1, 1))
+plot(tip ~ total_bill, data = tips,
+     xlab = "Bill Amount",
+     ylab = "Tip Amount",
+     main = "Bill to predict tips",
+     pch  = 20,
+     cex  = 1,
+     col  = "darkorange")
+abline(tips_slr, lwd = 3, col = "dodgerblue")
+``` 
+
+With a p-value of `r glance(tips_slr)$p.value` this model would be considered linearly significant at any $\alpha$.
+
+We'll accept this, `tips_slr = lm(tip ~ total_bill, data = tips)`, as our baseline model to beat. 
+
+First let's explore the data a little more and check for outliers. For now, we'll just define an outlier as an extreme value. We'll return to the definition given in the text later. Here we are going to check for a value more than 3 standard deviations above the mean. Since the lower bound of a tip is zero, we won't check the lower bound. 
+
+```{r,eval=TRUE}
+# Check for tip outliers
+tips$tip[ tips$tip > mean(tips$tip) + 3*sd(tips$tip)]
+```
+
+Here we see that we have 3 outliers. The reason, for now, that we want to explore this is, to do further exploration we are going to put the tips on a y-axis of some box plots, but we don't want the the outliers to dominate the scale and obscure other information.   
+  
+Recall that factor variables could affect the outcome, if the there is a significant differences between the means and variation between the levels within a factor variable, and a box plot is a good way to visualize this.
+
+```{r echo=FALSE}
+
+library(ggplot2)  
+
+# Here we do 1 box plot with outliers and then 3 without to show how
+# the scale with outliers make the plot harder to see.
+g <- ggplot(tips, aes(sex, tip)) + 
+     geom_boxplot(aes(fill=sex)) 
+# guide=FALSE to supress legend
+g <- g + scale_fill_manual(values=c("cyan","green"), guide=FALSE)
+g1 <- g + labs(title="by gender", x="Gender", y="Tip %")
+
+g <- ggplot(tips, aes(smoker, tip)) + 
+     geom_boxplot(aes(fill=smoker)) 
+# guide=FALSE to supress legend
+g <- g + scale_fill_manual(values=c("cyan","green"), guide=FALSE)
+g <- g + coord_cartesian(ylim = c(0,mean(tips$tip) + 3*sd(tips$tip)))
+g2 <- g + labs(title=" if smoker", x="Smoker", y="Tip %")
+
+g <- ggplot(tips, aes(day, tip)) + 
+     geom_boxplot(aes(fill=day)) 
+# guide=FALSE to supress legend
+g <- g + scale_fill_manual(values=c("cyan","green", "red", "yellow"), guide=FALSE)
+g <- g + labs(title="by day of the week", x="Day", y="Tip %")
+g3 <- g + coord_cartesian(ylim = c(0,mean(tips$tip) + 3*sd(tips$tip)))
+
+g <- ggplot(tips, aes(time, tip)) + 
+     geom_boxplot(aes(fill=time)) 
+# guide=FALSE to supress legend
+g <- g + scale_fill_manual(values=c("cyan","green", "red"), guide=FALSE)
+g <- g + coord_cartesian(ylim = c(0,mean(tips$tip) + 3*sd(tips$tip)))
+g4 <- g + labs(title="by time of day (meal type)", x="Time", y="Tip %")
+
+library(gridExtra)
+grid.arrange(g1, g2, g3, g4, nrow=2, ncol = 2, top="Tip Percentage")
+```
+ 
+The first box plot has all points on the scale, while we adjusted the scale on the following 3 plots.
+
+In any case, there **does not** seem to be a large variation in mean or variance of the factor variables in the data set. From looking at the interaction plots and TukeyHSD tests results (found in the Appendix),  there doesn't seem to be any significant interaction between factors.  This is consistent with what we see in the box plots above.  
+  
+Nonetheless, we'll create full additive and interaction models and see which predictors are eliminated by the techniques taught in this course. 
+
+We'll take a quick look at correlation between all variables. 
+  
+```{r,eval=TRUE}
+# cor(tips)                 # Error: must be all numeric
+pairs(tips, col="blue")
+```
+
+If we look at the correlations. The only obvious linear relation is between tip and bill total. It seems our original initution should hold.
+
+But we'll build larger models and try to find a good smaller model. See the appendix for the summary output of the models. 
+
+```{r results='hold'}
+# An additive model
+tip_add = lm(tip ~ ., data = tips)
+
+# A full interaction model.
+tip_int = lm(tip ~ total_bill * sex * smoker * day * time * size, data = tips)
+```
+
+```{r echo=FALSE, results='hide'}
+library(faraway)
+vif(tip_add)
+vif(tip_int)          
+```
+
+Now we can search for a better model by taking our larger models and eliminating less significate coeficients to reduce them to a manageable size by using AIC and BIC step function. 
+
+```{r,eval=TRUE}
+# Backward AIC and BIC models
+# additive models
+aic_back_add = step(tip_add, direction = "backward", trace = 0)
+n_a = length(resid(tip_add))
+mod_list = list(aic_back_add)
+bic_back_add = step(tip_add, direction = "backward", k = log(n_a), trace = 0)
+append_model_list(bic_back_add)
+
+# interaction models
+aic_back_int = step(tip_int, direction = "backward", trace = 0)
+n_i = length(resid(tip_int))
+append_model_list(aic_back_int)
+bic_back_int = step(tip_int, direction = "backward", k = log(n_i), trace = 0)
+append_model_list(bic_back_int)
+```
+
+```{r,eval=TRUE}
+# Forward AIC and BIC models
+# additive models
+tip_start = lm(tip ~ 1, data = tips)
+aic_for_add = step(tip_start, tip ~ total_bill + sex + smoker + day + time + size, direction = "forward", trace = 0)
+append_model_list(aic_for_add)
+bic_for_add = step(tip_start, tip ~ total_bill + sex + smoker + day + time + size, direction = "forward", k = log(n_a), trace = 0)
+append_model_list(bic_for_add)
+
+# interaction models
+aic_for_int = step(tip_start, tip ~ total_bill * sex * smoker * day * time * size, direction = "forward", trace = 0)
+append_model_list(aic_for_int)
+bic_for_int = step(tip_start, tip ~ total_bill * sex * smoker * day * time * size, direction = "forward", k = log(n_i), trace = 0)
+append_model_list(bic_for_int)
+```
+
+```{r,eval=TRUE}
+# Both AIC and BIC models
+# additive models
+tip_start = lm(tip ~ 1, data = tips)
+aic_both_add = step(tip_start, tip ~ total_bill + sex + smoker + day + time + size, direction = "both", trace = 0)
+append_model_list(aic_both_add)
+bic_both_add = step(tip_start, tip ~ total_bill + sex + smoker + day + time + size, direction = "both", k = log(n_a), trace = 0)
+append_model_list(bic_both_add)
+
+# interaction models
+aic_both_int = step(tip_start, tip ~ total_bill * sex * smoker * day * time * size, direction = "both", trace = 0)
+append_model_list(aic_both_int)
+bic_both_int = step(tip_start, tip ~ total_bill * sex * smoker * day * time * size, direction = "both", k = log(n_i), trace = 0)
+append_model_list(bic_both_int)
+```
+ 
+
+```{r echo=FALSE}
+# Here is a function that is not used, yet, in the code
+# But its useful
+# Because it builds a model from the parameters of an exhaustive search
+ build_model = function(parm_vector, p) {
+  parm_vector <- parm_vector[2:p]
+  parm_string <- paste(names(parm_vector[parm_vector == TRUE]), collapse = ' + ')
+  parm_string <- paste("tip ~ ", parm_string)
+  mymodel = lm(parm_string, data = tips)
+}
+
+# Example how to use function above. Replace the index with the best model
+# library(leaps)
+# all_models = summary(regsubsets(tip ~ ., data = tips))
+# p = length(coef(lm(tip ~ ., data = tips)))
+# (build_model(all_models$which[1,], p))
+```
+  
+We eliminated duplicate models as we went along invoking the  `append_model_list()` function which only appends unique models to the official list. We end up with 4 models, one of them the simple linear model, `tips_slr`, with `total_bill` as the only predictor, that we originally postulated as the best.     
+  
+**Final 4 Models**  
+  
+```{r,eval=TRUE}
+# look at the model coefficients to see how many unique models we have
+for(i in 1:length(mod_list)) {
+  cat("For model ", i , " coefficients are ", names(coef(mod_list[[i]])), "\n")
+}
+
+```
+  
+**Comments on Final 4 Models**  
+  
+It seems we have gotten 3 manageable models out of the four unique models choosen by our exploration. Model 3 is not much more manageable than our largest models and would not be a comprehensible model even with a low Adjusted $R^2$ value.  
+
+The second model is the same as our baseline, `tips_slr`. 
+  
+**Assumptions of linearity**  
+  
+Now let's look at the assumptions of linearity for our models.  We will do so visually and via statistical tests. We will create a Fitted versus Residuals plot and a Q-Q plot for each model.  
+  
+For the Fitted versus Residuals plots, we want to see 1) at any fitted value, the mean of the residuals should be roughly 0, and 2) at every fitted value, the spread of the residuals should be roughly the same. If 1) is true, the **linearity** assumption is valid. If 2) is true, the **constant variance** assumption is valid.    
+  
+For each Q-Q plot, we desire the points of the plot to closely follow a straight line. If so, this would suggest that the data comes from a **normal distribution**.
+
+From the plots below, we will show the results from running the Shapiro-Wilk and Breusch-Pagan tests.  
+
+  
+**Testing the assumption of normality**  
+  
+The **Shapiro-Wilk Test** is a test for **normality**. The null hypothesis assumes the data follows a normal distribution. The alternative hypothesis assumes a non-normal distribution.  When we see a low p-value for a reasonable $alpha$, it suggests the normality assumption is violated.  A large p-value indicates a normal distribution.  
+  
+**Testing the assumption of constant variance**  
+  
+The **Breusch-Pagan Test** is a test for **constant variance**. The null and alternative hypotheses can be considered to be:  
+  
+\(H_0\): Homoscedasticity. The errors have constant variance about the true model.  
+\(H_1\): Heteroscedasticity. The errors have non-constant variance about the true model.  
+  
+For a large p-value, so we fail to reject the null of homoscedasticity. Therefore, the constant variance assumption would not be violated.  
+  
+For a small p-value (for a reasonable $alpha$), so we reject the null of homoscedasticity. In this case, the constant variance assumption would be violated.  
+
+
+  
+```{r message=FALSE, warning=FALSE}
+
+library(lmtest)
+for(i in 1:length(mod_list)) {
+  plot_title = sprintf("model %i", i)
+  var_lin_plots(mod_list[[i]], plot_title)
+  # BP test of constant variance. $H_0$ is constant variance
+  # Shapiro test of normal dist. $H_0$ is normal dist
+  cat("The Breusch-Pagan p-value is ", bptest(mod_list[[i]])$p.value, " with ", bptest(mod_list[[i]])$parameter, " degrees of freedom", "\n", "The Shapiro-Wilk test has a p-value of ", shapiro.test(resid(mod_list[[i]]))$p.value)
+}
+```
+
+None of our models have data that has perfectly constant variance nor a perfect normal distribution, as shown by the charts and tests. Variance seems to get wider to the right of graphs, and linearity does not hold on the edges of our Q-Q graph.
+
+We'll continue, but since some assumptions are weak, we have to be careful interpeting our results, especially if we try to extrapolate and do predictions at or beyond the extreme points of the data.
+
+Let's further explore the nature of our data and look for high influence points by calculating Cook's Distance.
+  
+```{r,eval=TRUE}
+for (i in 1:length(mod_list)) {
+    # high leverage points
+    lev = which.max(hatvalues(mod_list[[i]]))
+    # outliers i.e. point with high residuals
+    temp = abs(rstandard(mod_list[[i]])) > 2
+    outl = as.integer(names(temp[temp == TRUE]))
+    # Both high "residual" and "leverage" is "influential"
+    cooki = intersect(lev, outl)
+    if (length(cooki) > 0) {
+    cat("The following data point(s) are influential and therefore their omission could change intercept and other coefficients for model ", i, "\n")
+      for (j in 1:length(cooki)) {
+        if (cooks.distance(mod_list[[i]])[unname(cooki[j])] > 4 / length(cooks.distance(mod_list[[i]]))) {
+          print(tips[cooki[j],])
+        }
+      }
+    }
+}
+```
+  
+Now let's see how well our models do in avoiding collinearity. 
+  
+```{r,eval=TRUE}
+for(i in 1:length(mod_list)) {
+  print(vif(mod_list[[i]]))
+}
+```
+  
+Our 3rd and 4th models have collinearity problems, and 3 is already an unwieldy model and unnecessarily large.  
+
+According to the VIF test, in model 1, the parameters total bill and size don't have a collinearity problem. Would it be reasonable to assume that the size of the bill and the size of the party eating are not related? We don't think so. 
+  
+Let's check if any of the parameters beyond our baseline are significant. 
+  
+```{r,eval=TRUE}
+(anova24 = anova(mod_list[[2]], mod_list[[4]]))
+(anova21 = anova(mod_list[[2]], mod_list[[1]]))
+```
+
+With a p-value of `r anova24$"Pr(>F)"[2]` we would reject the null at any reasonable $\alpha$ that addition $\beta$ s are 0 in our model 4. But our larger model here has some collinearity problems and is not a good model by that standard.
+
+Comparing our model 1 and 2 (our baseline) we have a p-value of `r anova21$"Pr(>F)"[2]` and we would reject the null hypothesis at an $\alpha$ of 0.05, but not 0.01. 
+
+Now let's look at our models' fit.
+
+```{r,eval=TRUE}
+# initiaize vectors
+loocv_rmse = rep(0, length(mod_list))
+adr2_v = rep(0, length(mod_list))
+
+# What is our LOOCV_RMSE? Smaller is better.
+for(i in 1:length(mod_list)) {
+  loocv_rmse[i]  = calc_loocv_rmse(mod_list[[i]])
+}
+
+# What is the Adjusted R^2? Larger is better.
+for(i in 1:length(mod_list)) {
+  adr2_v[i] = summary(mod_list[[i]])$adj.r.squared
+}
+
+```
+
+```{r,eval=TRUE,echo=FALSE}
+results_table <- data.frame(
+  Model_description = c("tip ~ total_bill + size",
+                        "tip ~ total_bill",
+                        "tip ~ total_bill + I(sex == Male) + I(smoker == Yes) + I(day == Sat) + I(day == Sun) + I(day == Thur) + ...",
+                        "tip ~ total_bill + I(smoker == Yes)"),
+  LOOCV_RMSE = loocv_rmse,
+  Adj_R2 = adr2_v
+)
+row.names(results_table) <- c("model 1", "model 2", "model 3", "model 4")
+
+knitr::kable(results_table)
+```
+  
+**Determining Best Model for Explanation**  
+  
+Model 1 seems to be the best at explanation, if we reject models 3 and 4 for other reasons.  
+  
+We see that model 3 has the highest Adjusted $R^2$ and model 4 is next. This would usually indicate that these are the best to explain the model, but we have noted serveral other problems with these models. 
+  
+**Determining Best Model for Prediction**  
+  
+Model 4 with the lowest LOOCV_RMSE would seem to be the best for prediction, but we will put this to the test. 
+
+We'll split the data to train and test and see if the predictions are good or not. 
+
+```{r,eval=TRUE}
+
+# randomly split observation data into train (66%) and test data (34%)
+train_index = sample(1:nrow(tips), .66*nrow(tips))
+tip_train_data = tips[train_index,]
+tip_test_data = tips[-train_index,]
+```
+
+```{r,eval=TRUE}
+# re-create the 4 final models from analysis above
+model_1_train = lm(tip ~ total_bill + size, data = tip_train_data)
+model_2_train = lm(tip ~ total_bill, data = tip_train_data)
+model_3_train = lm(tip ~ total_bill  + I(sex == "Male") + I(smoker == "Yes") + I(day == "Sat")+ I(day == "Sun")+ I(day=="Thur") + size + total_bill*I(sex=="Male")+ total_bill* I(smoker == "Yes") + total_bill* I(day=="Sat")+ total_bill* I(day=="Sun") + total_bill*I(day == "Thur")+ I(sex =="Male")*I(day == "Sat") + I(sex=="Male")*I(day =="Sun") + I(sex=="Male")*I(day=="Thur")+ total_bill*size+ I(smoker=="Yes")*size+ total_bill*I(sex == "Male")*I(day=="Sat") + total_bill*I(sex=="Male")*I(day=="Sun")+ total_bill*I(sex=="Male")*I(day == "Thur")+ total_bill*I(smoker=="Yes")*size , data = tip_train_data)
+model_4_train = lm(tip ~ total_bill + I(smoker == "Yes"), data = tip_train_data)
+
+# forget about the unwieldy model!
+# = lm(tip ~ total_bill + sex + smoker + day +size + total_bill*sex +total_bill*smoker+ total_bill*day+ total_bill*day + total_bill*day + sex*day + sex*day + sex:day + total_bill*size + smoker*size+ total_bill*sex*day + total_bill*sex*day+ total_bill*sex*day + total_bill*smoker*size, data = tip_train_data)
+```
+
+```{r,eval=TRUE}
+#tip_add_train = lm(tip ~ ., data = tip_train_data)
+
+mod_list_test_train = list(model_1_train)
+RMSE_1_train = sqrt(mean(resid(model_1_train) ^ 2))
+RMSE_2_train = sqrt(mean(resid(model_2_train) ^ 2))
+#append_model_list_test_train(tip_int_train)
+RMSE_3_train = sqrt(mean(resid(model_3_train) ^ 2))
+RMSE_4_train = sqrt(mean(resid(model_4_train) ^ 2))
+
+test_1 = predict(model_1_train, newdata = tip_test_data)
+RMSE_1_test = sqrt(mean(test_1-tip_test_data$tip) ^ 2)
+
+test_2 = predict(model_2_train, newdata = tip_test_data)
+RMSE_2_test = sqrt(mean(test_2-tip_test_data$tip) ^ 2)
+
+test_3 = predict(model_3_train, newdata = tip_test_data)
+RMSE_3_test = sqrt(mean(test_3-tip_test_data$tip) ^ 2)
+
+test_4 = predict(model_4_train, newdata = tip_test_data)
+RMSE_4_test = sqrt(mean(test_4-tip_test_data$tip) ^ 2)
+```
+
+```{r,eval=FALSE,echo=FALSE}
+summary(model_1_train)
+summary(model_2_train)
+summary(model_3_train)
+summary(model_4_train)
+```
+
+```{r,eval=TRUE,echo=FALSE}
+train_test_results_table = data.frame(
+  Model_description = c("tip ~ total_bill + size",
+                        "tip ~ total_bill",
+                        "tip ~ total_bill + I(sex == Male) + I(smoker == Yes) + I(day == Sat) + I(day == Sun) + I(day == Thur) + ...",
+                        "tip ~ total_bill + I(smoker == Yes)"),
+  RMSE_train = c(RMSE_1_train, RMSE_2_train,
+                 RMSE_3_train, RMSE_4_train),
+  
+  RMSE_test = c(RMSE_1_test, RMSE_2_test,
+                RMSE_3_test, RMSE_4_test)
+  )
+row.names(train_test_results_table) <- c("model 1", "model 2", "model 3", "model 4")
+
+knitr::kable(train_test_results_table)
+```
+
+```{r,eval=FALSE,echo=FALSE}
+Table: RMSE of 4 trained and tested models built for the tip data
+
+| Model Descriptions    | Train     | Test  |
+|-----------------------|-----------|-------|
+| Model 1| `r RMSE_1_train`| `r RMSE_1_test`    |
+|Model 2| `r RMSE_2_train`| `r RMSE_2_test`|    
+|Model 3| `r RMSE_3_train`| `r RMSE_3_test`|
+|Model 4| `r RMSE_4_train`| `r RMSE_4_test`|
+```
+
+Using the 4 trained models, models 2 and 4 have roughly the lowest RMSEs for the trained and test data indicating they probably do about the same in predicting model outcomes. Model 3 has a myriad of variables and is probably overfit, and adding `size` as a predictor to the `total_bill` doesn't seem to help matters.  
+
+```{r,eval=FALSE,echo=TRUE}
+# now look at the model coefficients to how many unique models we have
+for(i in 1:length(mod_list_test_train)) {
+  cat("For model ", i , " coefficients are ", names(coef(mod_list_test_train[[i]])), "\n")
+}
+
+# What is our LOOCV_RMSE? Smaller LOOCV_RMSE better
+for(i in 1:length(mod_list_test_train)) {
+  print(calc_loocv_rmse(mod_list_test_train[[i]]))
+}
+
+# What is the Adjusted R^2? Larger is better.
+for(i in 1:length(mod_list_test_train)) {
+  print(summary(mod_list_test_train[[i]])$adj.r.squared)
+}
+
+for(i in 1:length(mod_list_test_train)) {
+  print(vif(mod_list_test_train[[i]]))
+}
+```
+
+```{r,eval=TRUE,echo=FALSE}
+train_test_results2_table = data.frame(
+  Model_description = c("tip ~ total_bill + size",
+                        "tip ~ total_bill",
+                        "tip ~ total_bill + I(sex == Male) + I(smoker == Yes) + I(day == Sat) + I(day == Sun) + ...",
+                        "tip ~ total_bill + I(smoker == Yes)"),
+  
+  LOOCV_RMSE_train = c(calc_loocv_rmse(model_1_train),
+                       calc_loocv_rmse(model_2_train),
+                       calc_loocv_rmse(model_3_train),
+                       calc_loocv_rmse(model_4_train)),
+  
+  Adj_R2_train = c(summary(model_1_train)$adj.r.squared,
+                   summary(model_2_train)$adj.r.squared,
+                   summary(model_3_train)$adj.r.squared,
+                   summary(model_4_train)$adj.r.squared))
+
+row.names(train_test_results2_table) =
+            c("model 1", "model 2", "model 3", "model 4")
+
+knitr::kable(train_test_results2_table)
+```
+
+```{r,eval=FALSE,echo=FALSE}
+Table: LOOCV and Adj. R-Squared models built for the tip data
+
+| Model Descriptions    | LOOCV     | Adj. R-squared  |
+|-----------------------|-----------|-------|
+| Model 1| `r calc_loocv_rmse(model_1_train)`| `r summary(model_1_train)$adj.r.squared`|
+|Model 2| `r calc_loocv_rmse(model_2_train)`| `r summary(model_2_train)$adj.r.squared`|   
+|Model 3| `r calc_loocv_rmse(model_3_train)`| `r summary(model_3_train)$adj.r.squared`|  
+|Model 4| `r calc_loocv_rmse(model_4_train)`| `r summary(model_4_train)$adj.r.squared`|  
+```
+
+No surprise that the Adjusted $R^2$ value for model 3, given all the variables used to fit the model.  However, lowest LOOCV_RMSEs appear for the first two models indicating `size` (of party) and its closely related predictor `total_bill`.
+  
+  
+## Results
+  
+Here are the final 4 models that we built and are under consideration:      
+  
+**model 1**: lm(tip ~ total_bill + size, data = tips)  
+  
+**model 2**: lm(tip ~ total_bill, data = tips)  
+  
+**model 3**: lm(tip ~ total_bill + sex + smoker + day + size + total_bill:sex + total_bill:smoker + total_bill:day + sex:day + total_bill:size + smoker:size + total_bill:sex:day + total_bill:smoker:size, data = tips)  
+  
+**model 4**: lm(tip ~ total_bill + smoker + total_bill:smoker, data = tips)  
+   
+For all models built, we assumed the following:  Adjusted R^2 (larger is better), RMSE (smaller is better), LOOCV_RMSE (smaller is better), AIC (smaller is better), and BIC (smaller is better) when comparing models.  
+  
+### Numerical Summary of Model Results
+```{r,eval=TRUE,echo=FALSE}
+summary_results_table = data.frame(
+    LOOCV_RMSE = loocv_rmse,
+    LOOCV_RMSE_train = c(calc_loocv_rmse(model_1_train),
+                 calc_loocv_rmse(model_2_train),
+                 calc_loocv_rmse(model_3_train),
+                 calc_loocv_rmse(model_4_train)),
+    Adj_R2 = adr2_v,
+    Adj_R2_train = c(summary(model_1_train)$adj.r.squared,
+              summary(model_2_train)$adj.r.squared,
+              summary(model_3_train)$adj.r.squared,
+              summary(model_4_train)$adj.r.squared),
+    RMSE_train = c(RMSE_1_train, RMSE_2_train,
+                 RMSE_3_train, RMSE_4_train),
+    RMSE_test = c(RMSE_1_test, RMSE_2_test,
+                RMSE_3_test, RMSE_4_test)
+    )
+
+row.names(summary_results_table) =
+            c("model 1", "model 2", "model 3", "model 4")
+
+knitr::kable(summary_results_table)
+```
+
+**Recommended Model for Prediction**  
+**model 2**,   
+
+**Recommended Model for Explanation**  
+**model 1**, though we would suspect collinearity with size and total bill, the VIF test does not indicate this. 
+
+**Rejcted Models**  
+**model 3** and **model 4**
+  
+## Discussion
+
+At the onset, we suspected that `total_bill` would be the most signifcant variable in our data set. We also surmised that `size` of the party would be highly correlated to `total_bill`.  After a thorough analysis and building 4 unique models, we conclude that a linear model with predictors variable, `total_bill` and `size`, would be the best model for expalantion according to our tests. Furthermore, we didn't find any significant interaction among our 4 factor variables:  `time` (Lunch or Dinner), `day` (Thur, Fri, Sat, or Sun), `sex` (Male or Female), and `smoker` (Yes or No).  
+
+Our final model is useful because it is easy to understand and confirms most people's intuition on what determines tip amount. It also confirms that there are no "hidden" or unusally complex predictors in the data set.  That said, it would have been ideal to have at least one more predictor  called `service_rating`. By having diners rate the service experience of their waiter (e.g., Terrible, Poor, Fair, Good, Excellent), would have given us much greater accuracy in predicting the response variable, `tip`.  
+  
+Finally, we will use our proposed model to predict tip amounts for 3 types of bills:  1) a very small bill amount (near zero), 2) for a bill near the mean, and 3) for a bill at the very high end of our observed values.  
+
+```{r,eval=TRUE,echo=TRUE}
+# find lowest bill amount in data set
+min(tips$total_bill)
+low_bill = 2
+
+# find average bill amount
+mean(tips$total_bill)
+avg_bill = 20
+
+# find largest bill amount
+max(tips$total_bill)
+high_bill = 50
+
+# create data fram for these 3 sample bill amounts
+new_tips = data.frame(total_bill = c(low_bill, avg_bill, high_bill))
+
+# feed the 3 sammple bills into our prediction model
+model1 = lm(tip ~ total_bill + size, data = tips)
+model2 = lm(tip ~ total_bill, data = tips)
+predict(model2, newdata = new_tips, interval = "prediction",
+        level = 0.99)
+```
+**Observations on Predicted Tips**  
+
+We see from the results above that for a small bill (`r low_bill`), the tip would be between x and y dollars.  
+For an average bill (`r avg_bill`), the tip would be between a and b  dollars.  
+And for an unusually large bill (`r high_bill`), the tip would be c and d dollars.  
+  
+  
+## Appendix
+The **appendix** section contains code and analysis that is used, but that may clutter the report, or is not directly related to the model choice.
+
+### Code for helper functions hidden above
+
+```{r eval=FALSE}
+# Helper functions
+
+# Function to add new model to list of best models
+append_model_list = function(mod_new) {
+  for(i in 1:length(mod_list)) {
+    if (identical(coef(mod_list[[i]]), coef(mod_new))) {break}
+    if (i == length(mod_list)) {
+      .GlobalEnv$mod_list[[length(.GlobalEnv$mod_list)+1]] <- mod_new
+    }
+  }
+}
+
+# Function to add new model to list of best train and best test models
+set.seed(42)
+append_model_list_test_train = function(mod_new) {
+  for(i in 1:length(mod_list_test_train)) {
+    if (identical(coef(mod_list_test_train[[i]]), coef(mod_new))) {break}
+    if (i == length(mod_list_test_train)) {
+      .GlobalEnv$mod_list_test_train[[length(.GlobalEnv$mod_list_test_train)+1]] <- mod_new
+    }
+  }
+}
+
+# Function to run Leave-One-Out Cross-Validation RMSE from text
+calc_loocv_rmse = function(model) {
+  sqrt(mean((resid(model) / (1 - hatvalues(model))) ^ 2))
+}
+```
+
+
+```{r,solution=TRUE,eval=FALSE}
+# Helper functions from text
+plot_fitted_resid = function(model, model_name, pointcol = "dodgerblue", linecol = "darkorange") {
+  plot(fitted(model), resid(model), 
+       col = pointcol, pch = 20, cex = 1.5,
+       main=model_name, xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
+}
+
+plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+  qqline(resid(model), col = linecol, lwd = 2)
+}
+
+var_lin_plots <- function(model, model_name){
+  par(mfrow = c(1, 2))
+  plot_fitted_resid(model, model_name)
+  plot_qq(model)
+}
+
+```
+
+
+### Code to produce Box Plots 
+
+```{r,eval=FALSE,echo=TRUE}
+
+library(ggplot2)  
+
+# Here we do 1 box plot with outliers and then 3 without to show how
+# the scale with outliers make the plot harder to see.
+g <- ggplot(tips, aes(sex, tip)) + 
+     geom_boxplot(aes(fill=sex)) 
+# guide=FALSE to supress legend
+g <- g + scale_fill_manual(values=c("cyan","green"), guide=FALSE)
+g1 <- g + labs(title="by gender", x="Gender", y="Tip %")
+
+g <- ggplot(tips, aes(smoker, tip)) + 
+     geom_boxplot(aes(fill=smoker)) 
+# guide=FALSE to supress legend
+g <- g + scale_fill_manual(values=c("cyan","green"), guide=FALSE)
+g <- g + coord_cartesian(ylim = c(0,mean(tips$tip) + 3*sd(tips$tip)))
+g2 <- g + labs(title=" if smoker", x="Smoker", y="Tip %")
+
+g <- ggplot(tips, aes(day, tip)) + 
+     geom_boxplot(aes(fill=day)) 
+# guide=FALSE to supress legend
+g <- g + scale_fill_manual(values=c("cyan","green", "red", "yellow"), guide=FALSE)
+g <- g + labs(title="by day of week", x="Day", y="Tip %")
+g3 <- g + coord_cartesian(ylim = c(0,mean(tips$tip) + 3*sd(tips$tip)))
+
+g <- ggplot(tips, aes(time, tip)) + 
+     geom_boxplot(aes(fill=time)) 
+# guide=FALSE to supress legend
+g <- g + scale_fill_manual(values=c("cyan","green", "red"), guide=FALSE)
+g <- g + coord_cartesian(ylim = c(0,mean(tips$tip) + 3*sd(tips$tip)))
+g4 <- g + labs(title="by time of day (meal type)", x="Time", y="Tip %")
+
+library(gridExtra)
+grid.arrange(g1, g2, g3, g4, nrow=2, ncol = 2, top="Tip Percentage")
+```
+
+### Summary of full additive and interactive models run through the AIC and BIC process.
+```{r}
+summary(tip_add)
+summary(tip_int)
+```
+
+### Code to produce Interaction Plots and perform TukeyHSD tests on factors
+There are the 4 factor variables in our data set. They will be tested for interaction by viewing interaction plots and running Tukey's Honest Significance Difference test.  We will first confirm `time`, `smoker`, `sex`, and `day` are factor variables, then look at their levels.  
+
+```{r,eval=TRUE,echo=TRUE}
+# confirm time, smoker, sex, and day are factor variables
+is.factor(tips$time)
+is.factor(tips$smoker)
+is.factor(tips$sex)
+is.factor(tips$day)
+
+# what meal was consumed, or time of day?
+levels(tips$time)
+
+# was the bill payer a smoker?
+levels(tips$smoker)
+
+# gender of the bill payer
+levels(tips$sex)
+
+# day of the week (that the dining experience occured)
+levels(tips$day)
+
+# interaction plots
+# par(mfrow = c(1, 2))
+# Before running any tests, we should first look at the data
+# We will create interaction plots, which will help us visualize the effect
+# of one factor, as we move through the levels of another factor.
+
+# par(mfrow = c(1, 2))
+# tip ~ total_bill * size * time * smoker * sex * day
+
+# time, smoker factors
+# tip ~ total_bill * size * time * smoker * sex * day
+# interaction plots for time, smoker
+with(tips, interaction.plot(time, smoker, tip, lwd = 2, col = 1:4))
+with(tips, interaction.plot(smoker, time, tip, lwd = 2, col = 1:4))
+
+## time + smoker
+# within the additive model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ time + smoker, data = tips))
+
+## time * smoker
+# within the interaction model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ time * smoker, data = tips))
+
+
+# time, sex factors
+# tip ~ total_bill * size * time * smoker * sex *day
+# interaction plots for time, sex
+with(tips, interaction.plot(time, sex, tip, lwd = 2, col = 1:4))
+with(tips, interaction.plot(sex, time, tip, lwd = 2, col = 1:4))
+
+## time + sex
+# within the additive model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ time + sex, data = tips))
+
+## time * sex
+# within the interaction model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ time * sex, data = tips))
+
+
+# time, day factors
+# tip ~ total_bill * size * time * smoker * sex * day
+# interaction plots for time, day
+with(tips, interaction.plot(time, day, tip, lwd = 2, col = 1:4))
+with(tips, interaction.plot(day, time, tip, lwd = 2, col = 1:4))
+
+## time + day
+# within the additive model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ time + day, data = tips))
+
+## time * day
+# within the interaction model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ time * day, data = tips))
+
+
+# smoker, sex factors
+# tip ~ total_bill * size * time * smoker * sex * day
+# interaction plots for smoker, sex
+with(tips, interaction.plot(smoker, sex, tip, lwd = 2, col = 1:4))
+with(tips, interaction.plot(sex, smoker, tip, lwd = 2, col = 1:4))
+
+## smoker + sex
+# within the additive model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ smoker + sex, data = tips))
+
+## smoker * sex
+# within the interaction model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ smoker * sex, data = tips))
+
+
+# smoker, day factors
+# tip ~ total_bill * size * time * smoker * sex * day
+# interaction plots for smoker, day
+with(tips, interaction.plot(smoker, day, tip, lwd = 2, col = 1:4))
+with(tips, interaction.plot(day, smoker, tip, lwd = 2, col = 1:4))
+
+## smoker + day
+# within the additive model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ smoker + day, data = tips))
+
+## smoker * day
+# within the interaction model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ smoker * day, data = tips))
+
+
+# sex, day factors
+# tip ~ total_bill * size * time * smoker * sex * day
+# interaction plots for sex, day
+with(tips, interaction.plot(sex, day, tip, lwd = 2, col = 1:4))
+with(tips, interaction.plot(day, sex, tip, lwd = 2, col = 1:4))
+
+## sex + day
+# within the additive model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ sex + day, data = tips))
+
+## sex * day
+# within the interaction model, we do further testing about the main effects
+TukeyHSD(aov(tip ~ sex * day, data = tips))
+```
+
+### Final 4 Models Considered
+  
+```{r,eval=TRUE,echo=TRUE}
+# model 1
+mod_list[1]
+
+# model 2
+mod_list[2]
+
+# model 3
+mod_list[3]
+
+# model 4
+mod_list[4]
+```
+
+```{r,eval=FALSE,echo=FALSE}
+## PLOTS for each model, most don't make sense
+# model 1
+plot(tip ~ total_bill + size, data = tips,
+     xlab = "Bill Amount",
+     ylab = "Tip Amount",
+     main = "Bill to predict tips",
+     pch  = 20,
+     cex  = 1,
+     col  = "darkorange")
+model1 = lm(tip ~ total_bill + size, data = tips)
+abline(model1, lwd = 3, col = "dodgerblue")
+
+# model 2
+plot(tip ~ total_bill, data = tips,
+     xlab = "Bill Amount",
+     ylab = "Tip Amount",
+     main = "Bill to predict tips",
+     pch  = 20,
+     cex  = 1,
+     col  = "darkorange")
+model2 = lm(tip ~ total_bill, data = tips)
+abline(model2, lwd = 3, col = "dodgerblue")
+
+# model 3
+plot(tip ~ total_bill + sex + smoker + day + size + total_bill:sex + total_bill:smoker + total_bill:day + sex:day + total_bill:size + smoker:size + total_bill:sex:day + total_bill:smoker:size,
+     data = tips, pch = 20, col = "dodgerblue", cex = 1.5)
+
+model3 = lm(tip ~ total_bill + sex + smoker + day + size + total_bill:sex + total_bill:smoker + total_bill:day + sex:day + total_bill:size + smoker:size + total_bill:sex:day + total_bill:smoker:size, data = tips)
+
+abline(model3, lwd = 3, col = "dodgerblue")
+
+# model 4
+plot(tip ~ total_bill + smoker + total_bill:smoker, data = tips,
+     pch = 20, col = "dodgerblue", cex = 1.5)
+model4 = lm(tip ~ total_bill + smoker + total_bill:smoker, data = tips)
+abline(model4, lwd = 3, col = "dodgerblue")
+```
